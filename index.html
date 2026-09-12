@@ -938,11 +938,11 @@ bindTap(document.getElementById('skipBtn'), ()=>{ sfxClick(); closeUpgrade(); })
    ・セットアップ手順は SUPABASE_SETUP.md を参照。
    ============================================================ */
 // ▼▼▼ ここを自分の Supabase プロジェクトの値に書き換えてください ▼▼▼
-const SUPABASE_URL = 'https://YOUR-PROJECT-REF.supabase.co';
+const SUPABASE_URL = 'https://tglojqqizgywwzxwnpmd.supabase.co';
 const SUPABASE_ANON_KEY = 'YOUR-ANON-PUBLIC-KEY';
 // ▲▲▲ ここまで ▲▲▲
 const SCOREBOARD_SIZE = 30; // Top N（表示件数。テーブル自体は全記録を保持し、常に上位N件だけを取得する）
-
+eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRnbG9qcXFpemd5d3d6eHducG1kIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkyMzA5MDQsImV4cCI6MjEwNDgwNjkwNH0.AiXqeAKPM_gKtMdj9rGtnd9ZWTTIcY7n2F2i6qSrhFs
 function isSupabaseConfigured(){
   return !!SUPABASE_URL && !SUPABASE_URL.includes('YOUR-PROJECT') &&
          !!SUPABASE_ANON_KEY && !SUPABASE_ANON_KEY.includes('YOUR-ANON');
