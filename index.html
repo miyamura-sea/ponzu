@@ -296,7 +296,8 @@ const CONFIG = {
   },
   bullet:{
     speed:520,        // px/s (bulletSpeedMul で倍率)
-    radius:4,          // 実際の当たり判定は radius * bulletRadiusMul
+    radius:4,          // 実際の当たり判定は radius * bulletRadiusMul（ただし maxRadius で頭打ち）
+    maxRadius:12,      // 弾サイズアップを積んでも、これ以上（ウイルスの見た目半径13〜15より少し小さい値まで）は大きくしない
     interval:0.15,    // 発射間隔(秒)
     spreadDeg:6,       // 複数弾のときの1発あたり角度差
   },
@@ -339,7 +340,7 @@ const CONFIG = {
   },
   upgrades:[
     { key:'bulletSpeed',  name:'弾速アップ',     desc:c=>`弾速 +20% (現在 x${(Math.pow(1.2,c)).toFixed(2)})`, baseCost:150, growth:1.4, max:6 },
-    { key:'bulletRadius', name:'弾サイズアップ', desc:c=>`弾の大きさ・当たり判定 +50% (現在 x${(Math.pow(1.5,c)).toFixed(2)})`, baseCost:170, growth:1.4, max:6 },
+    { key:'bulletRadius', name:'弾サイズアップ', desc:c=>`弾の大きさ・当たり判定 +50%/回（ウイルスより少し小さいサイズが上限。現在 ${Math.min(CONFIG.bullet.radius*Math.pow(1.5,c), CONFIG.bullet.maxRadius).toFixed(1)}px）`, baseCost:170, growth:1.4, max:3 },
     { key:'bombMax',      name:'爆弾数アップ',   desc:c=>`最大所持数 +1 (現在 ${CONFIG.bomb.initialMax+c})`, baseCost:250, growth:1.6, max:4 },
     { key:'bombRecast',   name:'リキャスト短縮', desc:c=>`爆弾の再装填 -15% (現在 ${(CONFIG.bomb.regenInterval*Math.pow(CONFIG.bomb.recastStep,c)).toFixed(1)}秒)`, baseCost:200, growth:1.5, max:6 },
   ],
@@ -521,11 +522,17 @@ let W=0,H=0,CX=0,CY=0,FIELD_R=0;
 //   ブレていた問題への対応）。スマホ等、画面が小さくてこの半径だと
 //   はみ出してしまう場合だけ、安全のため比率ベースで縮小する。
 const BASE_FIELD_R = 320;
+// FIELD_R が BASE_FIELD_R より縮小された分だけ、自機・弾・敵などの見た目/当たり判定サイズも
+// 同じ比率で縮小するためのスケール係数（PC等の通常画面では常に1＝これまで通り）。
+// 画面が小さい端末でFIELD_Rだけ縮んで自機・敵のサイズが据え置きだと、円に対して
+// 相対的に大きく見えてしまい難易度が変わってしまう問題への対応（2026-09-12）。
+let FIELD_SCALE = 1;
 function resize(){
   W = canvas.width = window.innerWidth;
   H = canvas.height = window.innerHeight;
   CX = W/2; CY = H/2;
   FIELD_R = Math.min(BASE_FIELD_R, Math.min(W,H) * 0.42);
+  FIELD_SCALE = FIELD_R / BASE_FIELD_R;
 }
 window.addEventListener('resize', resize);
 // iOSのアドレスバー表示/非表示によるビューポート変化にも追従させる
@@ -578,6 +585,12 @@ let state = freshState();
 function polar(angle, radius){
   return { x: CX + Math.cos(angle)*radius, y: CY + Math.sin(angle)*radius };
 }
+// 弾サイズアップの倍率を反映した実効半径（当たり判定・描画共通）。
+// CONFIG.bullet.maxRadius で頭打ちにし、ウイルス（敵）の見た目半径13〜15pxより
+// 必ず少し小さいサイズに収まるようにする（弾が敵より大きく見えないようにするための上限）。
+function effectiveBulletRadius(){
+  return Math.min(CONFIG.bullet.radius * state.bulletRadiusMul, CONFIG.bullet.maxRadius);
+}
 function norm(a){
   while(a > Math.PI) a -= Math.PI*2;
   while(a < -Math.PI) a += Math.PI*2;
@@ -613,13 +626,13 @@ function spawnEnemyAt(angle){
   if(isStraight){
     state.enemies.push({
       type:'straight', angle, radius: FIELD_R-8, age:0,
-      visualR: CONFIG.enemy.straight.radius,
+      visualR: CONFIG.enemy.straight.radius * FIELD_SCALE,
     });
   } else {
     state.enemies.push({
       type:'wrap', angle, radius: FIELD_R-8, age:0,
       dir: Math.random()<0.5 ? 1 : -1,
-      visualR: CONFIG.enemy.wrap.radius,
+      visualR: CONFIG.enemy.wrap.radius * FIELD_SCALE,
     });
   }
 }
@@ -653,7 +666,7 @@ function fireNormal(){
   const step = CONFIG.bullet.spreadDeg * Math.PI/180;
   for(let i=0;i<n;i++){
     const off = (i - (n-1)/2) * step;
-    state.bullets.push({ angle: aim+off, radius: CONFIG.player.radius+4 });
+    state.bullets.push({ angle: aim+off, radius: CONFIG.player.radius*FIELD_SCALE+4 });
   }
   sfxShoot();
 }
@@ -676,7 +689,7 @@ function tryFireBomb(target){
 }
 
 function explodeBomb(x, y){
-  const R = CONFIG.bomb.blastRadius * state.blastRadiusMul;
+  const R = CONFIG.bomb.blastRadius * state.blastRadiusMul * FIELD_SCALE;
   const survivors = [];
   for(const e of state.enemies){
     const p = polar(e.angle, e.radius);
@@ -749,7 +762,7 @@ function update(dt){
 
   // bullets
   const bulletSpeed = CONFIG.bullet.speed * state.bulletSpeedMul;
-  const bulletHitR = CONFIG.bullet.radius * state.bulletRadiusMul;
+  const bulletHitR = effectiveBulletRadius() * FIELD_SCALE;
   const nextBullets = [];
   for(const bl of state.bullets){
     bl.radius += bulletSpeed*dt;
@@ -847,7 +860,7 @@ function update(dt){
   // collision with player -> HP damage (体力制。0まで減るとゲームオーバー)
   const survivors = [];
   for(const e of state.enemies){
-    if(e.radius <= CONFIG.player.radius + e.visualR){
+    if(e.radius <= CONFIG.player.radius*FIELD_SCALE + e.visualR){
       const dmg = CONFIG.enemy[e.type].contactDamage;
       state.hp = Math.max(0, state.hp - dmg);
       state.hpRegenTimer = 0;
@@ -942,6 +955,7 @@ const SUPABASE_URL = 'https://tglojqqizgywwzxwnpmd.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRnbG9qcXFpemd5d3d6eHducG1kIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkyMzA5MDQsImV4cCI6MjEwNDgwNjkwNH0.AiXqeAKPM_gKtMdj9rGtnd9ZWTTIcY7n2F2i6qSrhFs';
 // ▲▲▲ ここまで ▲▲▲
 const SCOREBOARD_SIZE = 30; // Top N（表示件数。テーブル自体は全記録を保持し、常に上位N件だけを取得する）
+
 function isSupabaseConfigured(){
   return !!SUPABASE_URL && !SUPABASE_URL.includes('YOUR-PROJECT') &&
          !!SUPABASE_ANON_KEY && !SUPABASE_ANON_KEY.includes('YOUR-ANON');
@@ -1448,7 +1462,7 @@ function draw(){
   // bullets ― cyan data-shots with short trail
   // 「弾サイズアップ」強化の見た目にも反映する（以前は当たり判定だけ大きくなり
   //   見た目が変わらず恩恵を感じにくかったため、描画サイズも bulletRadiusMul に連動させる）
-  const bulletDrawR = CONFIG.bullet.radius * state.bulletRadiusMul;
+  const bulletDrawR = effectiveBulletRadius() * FIELD_SCALE;
   for(const bl of state.bullets){
     const p = polar(bl.angle, bl.radius);
     const tail = polar(bl.angle, Math.max(0,bl.radius-14));
@@ -1530,7 +1544,7 @@ function draw(){
     ctx.stroke();
     // preview blast radius
     ctx.beginPath();
-    ctx.arc(state.reticle.x,state.reticle.y, CONFIG.bomb.blastRadius*state.blastRadiusMul, 0, Math.PI*2);
+    ctx.arc(state.reticle.x,state.reticle.y, CONFIG.bomb.blastRadius*state.blastRadiusMul*FIELD_SCALE, 0, Math.PI*2);
     ctx.strokeStyle='rgba(232,255,90,0.25)';
     ctx.stroke();
   }
@@ -1551,7 +1565,7 @@ function draw(){
 // Placeholder player visual ― a glowing "core" with orbiting rings.
 // Kept in its own function so the final 自機 design can drop in here later.
 function drawPlayerCore(){
-  const r = CONFIG.player.radius;
+  const r = CONFIG.player.radius * FIELD_SCALE;
   ctx.save();
   ctx.translate(CX,CY);
   // outer defense rings
