@@ -1,0 +1,1704 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>ponzu</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=DotGothic16&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#050212;
+    --field:#0a0620;
+    --cyan:#2bfff0;
+    --magenta:#ff2bd6;
+    --purple:#9d3bff;
+    --accent:var(--cyan);
+    --accent2:var(--magenta);
+    --gold:#e8ff5a;
+    --text:#eafcff;
+    --dim:#8a7fb8;
+    --pixel:"Press Start 2P","DotGothic16",monospace;
+    --jp:"DotGothic16","Press Start 2P",monospace;
+  }
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
+    font-family:var(--jp);
+    overflow:hidden;height:100%;width:100%;
+    overscroll-behavior:none;touch-action:none;
+    -webkit-user-select:none;user-select:none;
+    -webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;}
+  #game{display:block;position:fixed;inset:0;cursor:crosshair;touch-action:none;}
+
+  /* CRT / glitch atmosphere overlay ― kept subtle so the field stays readable */
+  #scanlines{
+    position:fixed;inset:0;pointer-events:none;z-index:5;mix-blend-mode:screen;
+    background:repeating-linear-gradient(0deg, rgba(43,255,240,0.025) 0px, rgba(43,255,240,0.025) 1px, transparent 2px, transparent 4px);
+  }
+  #vignette{
+    position:fixed;inset:0;pointer-events:none;z-index:6;
+    background:radial-gradient(ellipse at center, rgba(0,0,0,0) 60%, rgba(5,2,18,0.75) 100%);
+  }
+  #muteBtn{
+    position:fixed;bottom:calc(14px + env(safe-area-inset-bottom));right:calc(14px + env(safe-area-inset-right));z-index:20;
+    width:36px;height:36px;padding:0;
+    background:rgba(10,6,32,0.65);border:1px solid rgba(43,255,240,0.4);border-radius:4px;
+    color:var(--cyan);font-size:16px;line-height:1;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;
+  }
+  #muteBtn:hover{border-color:var(--cyan);box-shadow:0 0 10px rgba(43,255,240,0.4);}
+
+  #homeBtn{
+    position:fixed;top:calc(100px + env(safe-area-inset-top));left:calc(14px + env(safe-area-inset-left));z-index:20;
+    width:34px;height:34px;padding:0;
+    background:rgba(10,6,32,0.65);border:1px solid rgba(43,255,240,0.4);border-radius:4px;
+    color:var(--cyan);font-size:15px;line-height:1;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;
+  }
+  #homeBtn:hover{border-color:var(--cyan);box-shadow:0 0 10px rgba(43,255,240,0.4);}
+  #homeBtn.confirming{border-color:var(--magenta);color:var(--magenta);box-shadow:0 0 10px rgba(255,43,214,0.5);}
+
+  /* BOMB用オンスクリーンボタン（タッチ操作向け。マウス操作時は非表示のまま） */
+  #bombBtn{
+    position:fixed;bottom:calc(14px + env(safe-area-inset-bottom));right:calc(60px + env(safe-area-inset-right));z-index:20;
+    width:60px;height:60px;padding:0;border-radius:50%;
+    background:rgba(232,255,90,0.12);border:2px solid rgba(232,255,90,0.6);
+    color:var(--gold);font-size:24px;line-height:1;
+    display:flex;align-items:center;justify-content:center;
+    -webkit-tap-highlight-color:transparent;touch-action:none;
+  }
+  body.touch-device #bombBtn.armed{ background:rgba(232,255,90,0.5); box-shadow:0 0 16px rgba(232,255,90,0.7); }
+  /* マウス操作の端末では表示しない（右クリックで爆弾を扱えるため） */
+  body:not(.touch-device) #bombBtn{ display:none !important; }
+
+  .overlay{
+    position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+    background:rgba(4,2,16,0.86);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);z-index:10;
+  }
+  .hidden{display:none !important;}
+  /* 実機での不具合報告用の簡易エラー表示（画面上部に赤帯で出す）。
+     iPhone等ではブラウザのコンソールが見えないため、JSエラーが起きた場合に
+     ユーザー自身がエラー内容を確認・報告できるようにするための保険。 */
+  #errOverlay{
+    position:fixed;left:0;right:0;top:0;z-index:9999;
+    background:rgba(150,0,0,0.92);color:#fff;
+    font:11px/1.5 monospace;padding:10px 12px;
+    white-space:pre-wrap;word-break:break-all;
+    max-height:45%;overflow:auto;
+  }
+  .panel{
+    position:relative;
+    background:linear-gradient(180deg,#0c0824,#08051a);
+    border:1px solid rgba(43,255,240,0.4);
+    clip-path:polygon(0 14px,14px 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%);
+    padding:34px 40px;max-width:560px;width:90%;text-align:center;
+    box-shadow:0 0 0 1px rgba(255,43,214,0.25), 0 0 40px rgba(43,255,240,0.15), 0 20px 60px rgba(0,0,0,0.6);
+  }
+  .panel h1{
+    font-family:var(--pixel);font-size:2em;margin:0 0 14px;letter-spacing:3px;
+    color:#fff;
+    text-shadow:2px 0 0 var(--cyan), -2px 0 0 var(--magenta), 0 0 18px rgba(43,255,240,0.6);
+  }
+  .panel h2{
+    font-family:var(--pixel);font-size:0.85em;margin:0 0 20px;color:var(--gold);
+    letter-spacing:1px;
+    text-shadow:0 0 10px rgba(232,255,90,0.5);
+  }
+  .panel p{color:var(--dim);line-height:2;font-size:0.95em;text-align:left;}
+  #instrTouch{display:none;}
+  body.touch-device #instrMouse{display:none;}
+  body.touch-device #instrTouch{display:block;}
+  .panel ul{color:var(--dim);line-height:1.8;font-size:0.9em;text-align:left;padding-left:1.2em;}
+  .bigscore{
+    font-family:var(--pixel);font-size:2.2em;color:var(--gold);margin:16px 0;
+    text-shadow:0 0 14px rgba(232,255,90,0.6);
+  }
+  button.startBtn{
+    margin-top:18px;padding:16px 36px;font-family:var(--pixel);font-size:0.85em;
+    background:var(--cyan);color:#05121c;border:none;
+    clip-path:polygon(10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%,0 10px);
+    cursor:pointer;letter-spacing:1px;
+    box-shadow:0 0 20px rgba(43,255,240,0.5);
+    transition:transform .08s, box-shadow .15s;
+  }
+  button.startBtn:hover{filter:brightness(1.15);box-shadow:0 0 30px rgba(43,255,240,0.8);transform:translateY(-1px);}
+  button.startBtn:active{transform:translateY(1px);}
+  button.startBtn:disabled{opacity:0.35;cursor:not-allowed;box-shadow:none;filter:none;transform:none;}
+  button.startBtn:disabled:hover{opacity:0.35;box-shadow:none;filter:none;transform:none;}
+  #upgradeScreen .panel{max-width:720px;}
+  .upgradeGrid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:18px;}
+  .upCard{
+    background:rgba(157,59,255,0.08);border:1px solid rgba(157,59,255,0.5);
+    clip-path:polygon(10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%,0 10px);
+    padding:16px;text-align:left;cursor:pointer;transition:transform .1s, border-color .1s, background .1s;
+  }
+  .upCard:hover{border-color:var(--cyan);background:rgba(43,255,240,0.08);transform:translateY(-2px);}
+  .upCard.disabled{opacity:0.3;cursor:not-allowed;transform:none;background:rgba(157,59,255,0.08);}
+  .upCard .name{font-family:var(--pixel);font-weight:normal;color:var(--cyan);font-size:0.8em;margin-bottom:8px;line-height:1.6;}
+  .upCard .desc{color:var(--text);font-size:0.85em;margin-bottom:10px;}
+  .upCard .cost{color:var(--gold);font-size:0.8em;font-weight:bold;font-family:var(--pixel);}
+  .skipBtn{
+    margin-top:20px;background:none;border:1px solid rgba(138,127,184,0.5);color:var(--dim);
+    font-family:var(--jp);
+    padding:9px 22px;border-radius:2px;cursor:pointer;font-size:0.9em;
+  }
+  .skipBtn:hover{color:var(--text);border-color:var(--text);}
+  .skipBtn:disabled{opacity:0.3;cursor:not-allowed;color:var(--dim);border-color:rgba(138,127,184,0.5);}
+
+  #scoreboardScreen .panel{max-width:440px;}
+  .scoreList{margin:16px 0;text-align:left;}
+  .scoreRow{
+    display:flex;align-items:center;gap:10px;padding:7px 10px;
+    border-bottom:1px solid rgba(138,127,184,0.2);font-size:0.9em;
+  }
+  .scoreRow .rank{width:1.6em;color:var(--purple);font-family:var(--pixel);font-size:0.75em;}
+  .scoreRow .name{flex:1;letter-spacing:1px;}
+  .scoreRow .val{color:var(--gold);font-family:var(--pixel);font-size:0.75em;}
+  .scoreRow.highlight{background:rgba(43,255,240,0.1);border-bottom-color:rgba(43,255,240,0.4);}
+  .scoreRow.highlight .rank{color:var(--cyan);}
+  .scoreEmpty{color:var(--dim);text-align:center;padding:20px 0;font-size:0.9em;}
+  .rankNote{font-family:var(--pixel);font-size:0.75em;color:var(--gold);margin:6px 0 0;letter-spacing:1px;min-height:1em;}
+  .registerRow{display:flex;gap:8px;justify-content:center;margin-top:16px;}
+  #nameInput{
+    background:#0a0620;border:1px solid rgba(43,255,240,0.5);color:var(--text);
+    font-family:var(--pixel);font-size:0.8em;padding:10px 12px;width:9em;
+    text-transform:uppercase;letter-spacing:2px;outline:none;
+    -webkit-user-select:text;user-select:text;touch-action:manipulation;
+  }
+  #nameInput:focus{border-color:var(--cyan);box-shadow:0 0 10px rgba(43,255,240,0.4);}
+  #registerBtn{
+    font-family:var(--pixel);font-size:0.75em;padding:0 16px;
+    background:var(--gold);color:#05121c;border:none;cursor:pointer;
+    clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px);
+  }
+  #registerBtn:hover{filter:brightness(1.1);}
+
+  .glitchTitle{
+    font-family:var(--pixel);font-size:2.6em;line-height:1.4;color:#fff;margin:0 0 8px;
+    text-shadow:3px 0 0 var(--cyan), -3px 0 0 var(--magenta), 0 0 24px rgba(255,43,214,0.7);
+    animation:glitchFlicker 3s infinite steps(1);
+  }
+  @keyframes glitchFlicker{
+    0%,92%,100%{ opacity:1; transform:translate(0,0); }
+    93%{ opacity:0.7; transform:translate(-2px,1px); }
+    94%{ opacity:1; transform:translate(2px,-1px); }
+    95%{ opacity:0.85; transform:translate(0,0); }
+  }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="scanlines"></div>
+<div id="vignette"></div>
+<div id="errOverlay" class="hidden"></div>
+<button id="muteBtn" title="サウンド ON/OFF (M)">🔊</button>
+<button id="homeBtn" class="hidden" title="ホームに戻る">🏠</button>
+<button id="bombBtn" class="hidden" title="押しながらドラッグ→離すと爆弾">💣</button>
+
+<div id="titleScreen" class="overlay">
+  <div class="panel">
+    <h1>ponzu</h1>
+    <h2>360° WALL-SHOT ROGUELITE</h2>
+    <p id="instrMouse">
+      壁を撃つと、その衝撃で電子ウィルスが発生する。<br>
+      左クリック：通常弾（高得点・Chargeが溜まる）<br>
+      右クリック(長押し)：狙った場所へ爆弾（範囲攻撃・低得点・Chargeは溜まらない）<br>
+      ウィルスに触れたら即ゲームオーバー。Chargeが満タンになると強化を選べる。
+    </p>
+    <p id="instrTouch">
+      壁を撃つと、その衝撃で電子ウィルスが発生する。<br>
+      画面をタップし続ける：通常弾（高得点・Chargeが溜まる）<br>
+      💣ボタンを押しながらドラッグ→離す：狙った場所へ爆弾（範囲攻撃・低得点・Chargeは溜まらない）<br>
+      ウィルスに触れたら即ゲームオーバー。Chargeが満タンになると強化を選べる。
+    </p>
+    <button class="startBtn" id="startBtn">START</button>
+    <div><button class="skipBtn" id="scoreboardBtn" style="margin-top:14px;">ランキングを見る</button></div>
+  </div>
+</div>
+
+<div id="upgradeScreen" class="overlay hidden">
+  <div class="panel">
+    <h2>CHARGE MAX ― 強化を選択</h2>
+    <div class="upgradeGrid" id="upgradeGrid"></div>
+    <button class="skipBtn" id="skipBtn">強化せず再開 (Esc)</button>
+  </div>
+</div>
+
+<div id="gameoverScreen" class="overlay hidden">
+  <div class="panel">
+    <div class="glitchTitle">GAME OVER</div>
+    <div class="bigscore" id="finalScore">0</div>
+    <div class="rankNote" id="rankNote"></div>
+    <div class="registerRow hidden" id="registerRow">
+      <input id="nameInput" maxlength="10" placeholder="NAME">
+      <button id="registerBtn">REGISTER</button>
+    </div>
+    <div class="scoreList hidden" id="scoreList"></div>
+    <button class="startBtn" id="retryBtn">RETRY (R)</button>
+    <div><button class="skipBtn" id="homeBtnGameover" style="margin-top:10px;">ホームに戻る</button></div>
+  </div>
+</div>
+
+<div id="scoreboardScreen" class="overlay hidden">
+  <div class="panel">
+    <h2>SCOREBOARD TOP 30</h2>
+    <div class="scoreList" id="scoreListTitle"></div>
+    <button class="skipBtn" id="closeScoreboardBtn">閉じる (Esc)</button>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   実機デバッグ用フック（最優先で登録） ―
+   iPhone実機ではブラウザの開発者ツールが使えず、JSエラーが起きても
+   「タイトルは出るが何も反応しない」ようにしか見えず原因が分からない。
+   そのため、スクリプト内で起きた例外・Promiseの失敗を画面上部に
+   赤帯で直接表示する。ゲーム自体の見た目・動作には影響しない。
+   ============================================================ */
+function showErr(msg){
+  try{
+    const el = document.getElementById('errOverlay');
+    if(!el) return;
+    el.textContent += (el.textContent ? '\n' : '') + msg;
+    el.classList.remove('hidden');
+  }catch(_e){ /* ここで失敗しても他に影響を与えない */ }
+}
+window.addEventListener('error', function(e){
+  showErr('JS ERROR: ' + (e.message||e) + (e.filename?(' @ '+e.filename+':'+e.lineno):''));
+});
+window.addEventListener('unhandledrejection', function(e){
+  const r = e.reason;
+  showErr('PROMISE ERROR: ' + (r && r.message ? r.message : String(r)));
+});
+
+// クリック(マウス)とタップ(タッチ)の両方を確実に拾うための共通ヘルパー。
+// touchend側でpreventDefaultすることで、その後に発生する合成clickイベントを
+// 抑止し、二重発火を防いでいる（マウス操作の環境ではtouchendは発生しないため
+// 従来通りclickだけが動く）。
+function bindTap(el, handler){
+  if(!el) return;
+  el.addEventListener('click', handler);
+  el.addEventListener('touchend', function(e){ e.preventDefault(); handler(e); }, {passive:false});
+}
+
+/* ============================================================
+   CONFIG ― 企画書「今後決める必要がある項目」の決め打ち値一式
+   詳細な決定理由は DESIGN_DECISIONS.md を参照。
+   ============================================================ */
+const CONFIG = {
+  player:{
+    radius:18,
+    maxHp:100,
+    regenDelay:3,     // 秒。最後にダメージを受けてからこの秒数ノーダメージだと回復開始
+    regenRate:14,      // 秒間回復量（COD方式のじわ回復、0→満タン約7秒）
+  },
+  bullet:{
+    speed:520,        // px/s (bulletSpeedMul で倍率)
+    radius:4,          // 実際の当たり判定は radius * bulletRadiusMul
+    interval:0.15,    // 発射間隔(秒)
+    spreadDeg:6,       // 複数弾のときの1発あたり角度差
+  },
+  charge:{
+    perHit:2,          // 通常弾が壁に当たるごとの増加量（MAXまで50回）
+    decayDelay:3,      // 壁を撃たずにこの秒数が過ぎると自然減少が始まる
+    decayPerSec:2,     // 減少開始後、毎秒この量ずつ減っていく
+    max:100,
+    offsetMinDeg:35,    // 出現位置オフセット角度の範囲
+    offsetMaxDeg:55,
+  },
+  telegraph:{ duration:0.4 },
+  enemy:{
+    cap:50,
+    straightRatio:0.6,
+    straight:{ speed:110, radius:13, hp:1, contactDamage:15 },
+    wrap:{ speed:70, radius:15, hp:1, angularSpeedDeg:75, radialRampTime:2.2, contactDamage:25 }, // constant angular speed -> true spiral all the way in
+  },
+  score:{
+    normalKill:100,
+    bombKill:40,
+    multiplierStep:10,   // 敵n体ごとに倍率+step
+    multiplierStepValue:0.5,
+    // キルストリーク ― 連続で倒し続けるほどスコア倍率が伸びる
+    streakWindow:2.5,      // 最後の撃破からこの秒数以内に倒せば連鎖継続
+    streakStep:5,          // 何キルごとに倍率が1段上がるか
+    streakStepValue:0.25,  // 1段あたりの倍率上昇量
+    streakMaxMul:3,        // ストリーク倍率の上限
+  },
+  bomb:{
+    initialMax:3,
+    cooldown:0.9,        // 連射間隔(秒)。bombRecastMul で短縮
+    regenInterval:9,     // 自動リロード間隔(秒)。bombRecastMul で短縮
+    speed:640,          // px/s while in flight
+    homingRadius:150,    // picks up the nearest enemy within this range of its current position
+    homingTurn:5,        // how fast it steers toward a picked-up enemy (per second)
+    maxLife:1.6,         // safety fuse so a bomb can't chase forever
+    blastRadius:90,      // 固定値（強化対象からは外した）
+    recastStep:0.85,     // リキャスト短縮1回あたりの倍率
+  },
+  upgrades:[
+    { key:'bulletSpeed',  name:'弾速アップ',     desc:c=>`弾速 +20% (現在 x${(Math.pow(1.2,c)).toFixed(2)})`, baseCost:150, growth:1.4, max:6 },
+    { key:'bulletRadius', name:'弾サイズアップ', desc:c=>`弾の大きさ・当たり判定 +50% (現在 x${(Math.pow(1.5,c)).toFixed(2)})`, baseCost:170, growth:1.4, max:6 },
+    { key:'bombMax',      name:'爆弾数アップ',   desc:c=>`最大所持数 +1 (現在 ${CONFIG.bomb.initialMax+c})`, baseCost:250, growth:1.6, max:4 },
+    { key:'bombRecast',   name:'リキャスト短縮', desc:c=>`爆弾の再装填 -15% (現在 ${(CONFIG.bomb.regenInterval*Math.pow(CONFIG.bomb.recastStep,c)).toFixed(1)}秒)`, baseCost:200, growth:1.5, max:6 },
+  ],
+};
+
+/* ============================================================
+   Audio ― synthesized 8bit chiptune, no external sound files.
+   Built with plain Web Audio API oscillators/noise so the game
+   stays a single self-contained HTML file.
+   ============================================================ */
+let audioCtx = null, masterGain = null, musicGain = null, sfxGain = null;
+let muted = false;
+try{ muted = localStorage.getItem('ponzu_muted') === '1'; } catch(e){}
+
+function ensureAudio(){
+  if(!audioCtx){
+    try{
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      masterGain = audioCtx.createGain();
+      masterGain.gain.value = muted ? 0 : 1;
+      masterGain.connect(audioCtx.destination);
+      musicGain = audioCtx.createGain();
+      musicGain.gain.value = 0.32;
+      musicGain.connect(masterGain);
+      sfxGain = audioCtx.createGain();
+      sfxGain.gain.value = 0.5;
+      sfxGain.connect(masterGain);
+    } catch(e){ audioCtx = null; }
+  }
+  if(audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+function setMuted(m){
+  muted = m;
+  try{ localStorage.setItem('ponzu_muted', m ? '1' : '0'); } catch(e){}
+  if(masterGain) masterGain.gain.value = m ? 0 : 1;
+  const btn = document.getElementById('muteBtn');
+  if(btn) btn.textContent = m ? '🔇' : '🔊';
+}
+function toggleMute(){ ensureAudio(); setMuted(!muted); }
+
+// Note name (e.g. 'E4') -> frequency, equal temperament A4=440.
+const NOTE_SEMIS = {C:-9,'C#':-8,D:-7,'D#':-6,E:-5,F:-4,'F#':-3,G:-2,'G#':-1,A:0,'A#':1,B:2};
+function noteFreq(note){
+  const m = note.match(/^([A-G]#?)(\d)$/);
+  const semis = NOTE_SEMIS[m[1]] + (parseInt(m[2],10)-4)*12;
+  return 440 * Math.pow(2, semis/12);
+}
+
+function playTone(freq, dur, opts={}){
+  if(!audioCtx) return;
+  const { type='square', vol=0.2, gain=sfxGain, glideTo=null, delay=0 } = opts;
+  const t0 = audioCtx.currentTime + delay;
+  const osc = audioCtx.createOscillator();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, t0);
+  if(glideTo) osc.frequency.exponentialRampToValueAtTime(glideTo, t0+dur);
+  const g = audioCtx.createGain();
+  g.gain.setValueAtTime(vol, t0);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0+dur);
+  osc.connect(g); g.connect(gain);
+  osc.start(t0); osc.stop(t0+dur+0.02);
+}
+
+function playNoise(dur, opts={}){
+  if(!audioCtx) return;
+  const { vol=0.2, gain=sfxGain, filterType='lowpass', filterFreq=2000, filterTo=null, delay=0 } = opts;
+  const t0 = audioCtx.currentTime + delay;
+  const bufferSize = Math.max(1, Math.floor(audioCtx.sampleRate*dur));
+  const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for(let i=0;i<bufferSize;i++) data[i] = Math.random()*2-1;
+  const src = audioCtx.createBufferSource();
+  src.buffer = buffer;
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = filterType;
+  filter.frequency.setValueAtTime(filterFreq, t0);
+  if(filterTo) filter.frequency.exponentialRampToValueAtTime(filterTo, t0+dur);
+  const g = audioCtx.createGain();
+  g.gain.setValueAtTime(vol, t0);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0+dur);
+  src.connect(filter); filter.connect(g); g.connect(gain);
+  src.start(t0); src.stop(t0+dur+0.02);
+}
+
+// ―― Sound effects ――
+function sfxShoot(){ ensureAudio(); playTone(880,0.05,{type:'square',vol:0.1,glideTo:640}); }
+function sfxWallHit(){ ensureAudio(); playTone(1500,0.03,{type:'square',vol:0.05}); }
+function sfxWallDenied(){ ensureAudio(); playTone(180,0.05,{type:'square',vol:0.07}); }
+function sfxPlayerHit(){
+  ensureAudio();
+  playNoise(0.16,{vol:0.2,filterFreq:1400,filterTo:120});
+  playTone(180,0.14,{type:'sawtooth',vol:0.15,glideTo:70});
+}
+function sfxKillNormal(){
+  ensureAudio();
+  playTone(660,0.05,{type:'square',vol:0.16});
+  playTone(990,0.07,{type:'square',vol:0.14,delay:0.045});
+}
+function sfxBombFire(){
+  ensureAudio();
+  playNoise(0.12,{vol:0.13,filterFreq:3000,filterTo:500});
+  playTone(320,0.12,{type:'sawtooth',vol:0.06,glideTo:120});
+}
+function sfxExplosion(){
+  ensureAudio();
+  playNoise(0.28,{vol:0.26,filterFreq:1800,filterTo:90});
+  playTone(140,0.2,{type:'triangle',vol:0.14,glideTo:40});
+}
+function sfxStreakUp(){
+  ensureAudio();
+  [988,1319].forEach((f,i)=>playTone(f,0.07,{type:'square',vol:0.13,delay:i*0.05}));
+}
+function sfxChargeFull(){
+  ensureAudio();
+  [660,880,1320].forEach((f,i)=>playTone(f,0.09,{type:'square',vol:0.15,delay:i*0.07}));
+}
+function sfxUpgradeBuy(){
+  ensureAudio();
+  playTone(880,0.06,{type:'square',vol:0.15});
+  playTone(1320,0.08,{type:'square',vol:0.13,delay:0.06});
+}
+function sfxGameOver(){
+  ensureAudio();
+  [660,587,494,392].forEach((f,i)=>playTone(f,0.18,{type:'square',vol:0.17,delay:i*0.15}));
+}
+function sfxRegister(){
+  ensureAudio();
+  [523,659,784,1047].forEach((f,i)=>playTone(f,0.1,{type:'square',vol:0.16,delay:i*0.08}));
+}
+function sfxClick(){ ensureAudio(); playTone(1000,0.03,{type:'square',vol:0.07}); }
+
+// ―― BGM: a short, catchy Em-C-G-D 16th-note chiptune loop (lead + bass + noise backbeat) ――
+const BGM_LEAD = ['E4','G4','B4','E5', 'C4','E4','G4','C5', 'G3','B3','D4','G4', 'D4','F#4','A4','D5'];
+const BGM_BASS = ['E2',null,'E2',null, 'C2',null,'C2',null, 'G2',null,'G2',null, 'D2',null,'D2',null];
+const BGM_PERC = [0,0,0,0, 1,0,0,0, 0,0,0,0, 1,0,0,0];
+const BGM_BPM = 148;
+const BGM_LOOKAHEAD = 0.15, BGM_INTERVAL_MS = 30;
+let bgmPlaying = false, bgmStep = 0, bgmNextTime = 0, bgmTimerId = null;
+
+function scheduleBgmStep(i, t){
+  const lead = BGM_LEAD[i % BGM_LEAD.length];
+  const bass = BGM_BASS[i % BGM_BASS.length];
+  const perc = BGM_PERC[i % BGM_PERC.length];
+  if(lead) playTone(noteFreq(lead), 0.14, {type:'square', vol:0.1, gain:musicGain, delay:t-audioCtx.currentTime});
+  if(bass) playTone(noteFreq(bass), 0.22, {type:'triangle', vol:0.15, gain:musicGain, delay:t-audioCtx.currentTime});
+  if(perc) playNoise(0.06, {vol:0.11, gain:musicGain, filterType:'highpass', filterFreq:1500, delay:t-audioCtx.currentTime});
+}
+function bgmScheduler(){
+  const stepDur = 60/BGM_BPM/4;
+  while(bgmNextTime < audioCtx.currentTime + BGM_LOOKAHEAD){
+    scheduleBgmStep(bgmStep, bgmNextTime);
+    bgmNextTime += stepDur;
+    bgmStep++;
+  }
+}
+function startBgm(){
+  ensureAudio();
+  if(!audioCtx || bgmPlaying) return;
+  bgmPlaying = true;
+  bgmStep = 0;
+  bgmNextTime = audioCtx.currentTime + 0.05;
+  bgmTimerId = setInterval(bgmScheduler, BGM_INTERVAL_MS);
+}
+function stopBgm(){
+  bgmPlaying = false;
+  if(bgmTimerId){ clearInterval(bgmTimerId); bgmTimerId = null; }
+}
+
+/* ============================================================
+   Canvas / field setup
+   ============================================================ */
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+let W=0,H=0,CX=0,CY=0,FIELD_R=0;
+
+// フィールド半径は画面サイズによらず常にこの値で固定する
+// （自機⇔壁の距離が画面サイズで変わってしまい弾速・敵の脅威度の体感が
+//   ブレていた問題への対応）。スマホ等、画面が小さくてこの半径だと
+//   はみ出してしまう場合だけ、安全のため比率ベースで縮小する。
+const BASE_FIELD_R = 320;
+function resize(){
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  CX = W/2; CY = H/2;
+  FIELD_R = Math.min(BASE_FIELD_R, Math.min(W,H) * 0.42);
+}
+window.addEventListener('resize', resize);
+// iOSのアドレスバー表示/非表示によるビューポート変化にも追従させる
+if(window.visualViewport) window.visualViewport.addEventListener('resize', resize);
+window.addEventListener('orientationchange', resize);
+resize();
+
+/* ============================================================
+   State
+   ============================================================ */
+function freshState(){
+  return {
+    status:'title', // title | playing | upgrade | gameover
+    pendingRegistration:false, // true の間はゲームオーバー画面でリトライ不可（Top30登録待ち）
+    score:0,
+    charge:0,
+    chargeIdleTimer:0,  // 秒。最後に壁を撃ってからの経過時間（減少開始の判定用）
+    streak:0,           // 現在のキルストリーク数
+    streakTimer:0,      // 秒。最後の撃破からの経過時間
+    streakPop:0,        // 0〜1。倍率の段が上がったときのHUD演出の残り強度
+    hp:CONFIG.player.maxHp,
+    hpRegenTimer:0,   // 秒。最後の被弾からの経過時間
+    hitFlash:0,        // 0〜1。被弾時の赤フラッシュ演出の残り強度
+    bulletCount:1,      // 強化対象からは外したので常に1
+    bulletSpeedMul:1,
+    blastRadiusMul:1,   // 強化対象からは外したので常に1（爆発範囲は固定）
+    bulletRadiusMul:1,
+    bombRecastMul:1,    // 爆弾の連射間隔・自動リロード間隔にかかる倍率（小さいほど速い）
+    bombMax:CONFIG.bomb.initialMax,
+    bombs:CONFIG.bomb.initialMax,
+    bombCooldown:0,
+    bombRegenTimer:0,
+    upgradeCounts:{ bulletSpeed:0, bulletRadius:0, bombMax:0, bombRecast:0 },
+    fireCooldown:0,
+    leftDown:false,
+    rightDown:false,
+    reticle:null,
+    mouse:{x:0,y:0},
+    enemies:[],      // {angle,radius,type,age,dir,visualR,hp}
+    bullets:[],      // {angle,radius}
+    bombsInFlight:[],// {x,y,tx,ty,t} ― x/y = current position, tx/ty = homing target
+    telegraphs:[],   // {startAngle,spawnAngle,t}
+    sparks:[],       // {angle,t}
+    particles:[],    // {x,y,vx,vy,t,life,color,r}
+    shake:0,
+  };
+}
+let state = freshState();
+
+function polar(angle, radius){
+  return { x: CX + Math.cos(angle)*radius, y: CY + Math.sin(angle)*radius };
+}
+function norm(a){
+  while(a > Math.PI) a -= Math.PI*2;
+  while(a < -Math.PI) a += Math.PI*2;
+  return a;
+}
+function scoreMultiplier(enemyCount){
+  return 1 + Math.floor(enemyCount / CONFIG.score.multiplierStep) * CONFIG.score.multiplierStepValue;
+}
+// キルストリーク倍率 ― streakStep キルごとに1段上がり、streakMaxMul で頭打ち
+function streakMultiplier(streak){
+  const sc = CONFIG.score;
+  return Math.min(sc.streakMaxMul, 1 + Math.floor(streak / sc.streakStep) * sc.streakStepValue);
+}
+// 敵1体撃破ぶんの処理 ― ストリークを伸ばし、敵数倍率×ストリーク倍率の獲得スコアを返す。
+// 倒した敵をリストから消す前に呼ぶこと（敵数倍率にその1体を含めるため）。
+function registerKill(baseScore){
+  const prevMul = streakMultiplier(state.streak);
+  state.streak++;
+  state.streakTimer = 0;
+  const streakMul = streakMultiplier(state.streak);
+  if(streakMul > prevMul){   // 倍率の段が上がった瞬間だけ演出を出す
+    state.streakPop = 1;
+    sfxStreakUp();
+  }
+  return Math.round(baseScore * scoreMultiplier(state.enemies.length) * streakMul);
+}
+
+/* ============================================================
+   Spawning
+   ============================================================ */
+function spawnEnemyAt(angle){
+  const isStraight = Math.random() < CONFIG.enemy.straightRatio;
+  if(isStraight){
+    state.enemies.push({
+      type:'straight', angle, radius: FIELD_R-8, age:0,
+      visualR: CONFIG.enemy.straight.radius,
+    });
+  } else {
+    state.enemies.push({
+      type:'wrap', angle, radius: FIELD_R-8, age:0,
+      dir: Math.random()<0.5 ? 1 : -1,
+      visualR: CONFIG.enemy.wrap.radius,
+    });
+  }
+}
+
+function handleWallHit(angle){
+  // Charge ― 壁を撃っている間は自然減少のカウントがリセットされる
+  state.charge = Math.min(CONFIG.charge.max, state.charge + CONFIG.charge.perHit);
+  state.chargeIdleTimer = 0;
+  // Spawn (unless at cap)
+  if(state.enemies.length < CONFIG.enemy.cap){
+    const offDeg = CONFIG.charge.offsetMinDeg + Math.random()*(CONFIG.charge.offsetMaxDeg-CONFIG.charge.offsetMinDeg);
+    const sign = Math.random()<0.5 ? -1 : 1;
+    const spawnAngle = angle + sign * offDeg * Math.PI/180;
+    state.telegraphs.push({ startAngle:angle, spawnAngle, t:0 });
+    sfxWallHit();
+  } else {
+    state.sparks.push({ angle, t:0 });
+    sfxWallDenied();
+  }
+  if(state.charge >= CONFIG.charge.max && state.status==='playing'){
+    openUpgrade();
+  }
+}
+
+/* ============================================================
+   Firing
+   ============================================================ */
+function fireNormal(){
+  const aim = Math.atan2(state.mouse.y-CY, state.mouse.x-CX);
+  const n = state.bulletCount;
+  const step = CONFIG.bullet.spreadDeg * Math.PI/180;
+  for(let i=0;i<n;i++){
+    const off = (i - (n-1)/2) * step;
+    state.bullets.push({ angle: aim+off, radius: CONFIG.player.radius+4 });
+  }
+  sfxShoot();
+}
+
+function clampToField(x,y){
+  const dx=x-CX, dy=y-CY;
+  const d=Math.hypot(dx,dy);
+  const maxR = FIELD_R-10;
+  if(d<=maxR || d===0) return {x,y};
+  const s=maxR/d;
+  return { x:CX+dx*s, y:CY+dy*s };
+}
+
+function tryFireBomb(target){
+  if(state.bombs<=0 || state.bombCooldown>0) return;
+  state.bombs--;
+  state.bombCooldown = CONFIG.bomb.cooldown * state.bombRecastMul;
+  state.bombsInFlight.push({ x:CX, y:CY, tx:target.x, ty:target.y, t:0 });
+  sfxBombFire();
+}
+
+function explodeBomb(x, y){
+  const R = CONFIG.bomb.blastRadius * state.blastRadiusMul;
+  const survivors = [];
+  for(const e of state.enemies){
+    const p = polar(e.angle, e.radius);
+    if(Math.hypot(p.x-x, p.y-y) <= R + e.visualR){
+      // 巻き込んだ数だけストリークが伸びる（まとめて倒すほど倍率が跳ね上がる）
+      state.score += registerKill(CONFIG.score.bombKill);
+      spawnBurst(p.x,p.y,'#e8ff5a');
+    } else {
+      survivors.push(e);
+    }
+  }
+  state.enemies = survivors;
+  spawnExplosionRing(x,y,R);
+  sfxExplosion();
+  state.shake = Math.max(state.shake, 8);
+}
+
+function spawnBurst(x,y,color){
+  for(let i=0;i<10;i++){
+    const a = Math.random()*Math.PI*2;
+    const sp = 60+Math.random()*120;
+    state.particles.push({ x,y, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp, t:0, life:0.35, color, r:2+Math.random()*2, ring:false });
+  }
+}
+function spawnExplosionRing(x,y,maxR){
+  state.particles.push({ x,y, t:0, life:0.35, color:'#e8ff5a', ring:true, maxR });
+}
+
+/* ============================================================
+   Update
+   ============================================================ */
+function update(dt){
+  if(state.status!=='playing'){
+    // still animate lightweight fx during upgrade/gameover pause? keep frozen.
+    return;
+  }
+
+  // firing
+  state.fireCooldown -= dt;
+  if(state.leftDown && state.fireCooldown<=0){
+    fireNormal();
+    state.fireCooldown = CONFIG.bullet.interval;
+  }
+  state.bombCooldown = Math.max(0, state.bombCooldown - dt);
+  if(state.bombs < state.bombMax){
+    state.bombRegenTimer += dt;
+    if(state.bombRegenTimer >= CONFIG.bomb.regenInterval * state.bombRecastMul){
+      state.bombRegenTimer = 0;
+      state.bombs = Math.min(state.bombMax, state.bombs+1);
+    }
+  } else {
+    state.bombRegenTimer = 0;
+  }
+
+  // Charge の自然減少 ― 壁を撃たない時間が decayDelay 秒を超えてから減り始める
+  state.chargeIdleTimer += dt;
+  if(state.chargeIdleTimer >= CONFIG.charge.decayDelay){
+    state.charge = Math.max(0, state.charge - CONFIG.charge.decayPerSec*dt);
+  }
+
+  // キルストリーク ― 一定時間倒せないと連鎖が途切れる
+  if(state.streak > 0){
+    state.streakTimer += dt;
+    if(state.streakTimer >= CONFIG.score.streakWindow){
+      state.streak = 0;
+      state.streakTimer = 0;
+    }
+  }
+  state.streakPop = Math.max(0, state.streakPop - dt*2.5);
+
+  // bullets
+  const bulletSpeed = CONFIG.bullet.speed * state.bulletSpeedMul;
+  const bulletHitR = CONFIG.bullet.radius * state.bulletRadiusMul;
+  const nextBullets = [];
+  for(const bl of state.bullets){
+    bl.radius += bulletSpeed*dt;
+    if(bl.radius >= FIELD_R){
+      handleWallHit(bl.angle);
+      continue;
+    }
+    // collision vs enemies
+    const p = polar(bl.angle, bl.radius);
+    let hit = false;
+    for(let i=0;i<state.enemies.length;i++){
+      const e = state.enemies[i];
+      const ep = polar(e.angle, e.radius);
+      if(Math.hypot(p.x-ep.x, p.y-ep.y) <= bulletHitR + e.visualR){
+        state.score += registerKill(CONFIG.score.normalKill);
+        spawnBurst(ep.x, ep.y, '#2bfff0');
+        state.enemies.splice(i,1);
+        sfxKillNormal();
+        hit = true;
+        break;
+      }
+    }
+    if(!hit) nextBullets.push(bl);
+  }
+  state.bullets = nextBullets;
+
+  // bombs in flight ― light homing: steers toward whatever enemy is nearest its current position
+  const nextBombs=[];
+  for(const b of state.bombsInFlight){
+    b.t += dt;
+    let nearest=null, nd=CONFIG.bomb.homingRadius;
+    for(const e of state.enemies){
+      const ep = polar(e.angle, e.radius);
+      const d = Math.hypot(ep.x-b.x, ep.y-b.y);
+      if(d < nd){ nd = d; nearest = ep; }
+    }
+    if(nearest){
+      const turn = Math.min(1, CONFIG.bomb.homingTurn*dt);
+      b.tx += (nearest.x - b.tx) * turn;
+      b.ty += (nearest.y - b.ty) * turn;
+    }
+    const dx=b.tx-b.x, dy=b.ty-b.y, dist=Math.hypot(dx,dy);
+    const step = CONFIG.bomb.speed*dt;
+    const outOfField = Math.hypot(b.x-CX, b.y-CY) >= FIELD_R;
+    if(dist <= Math.max(step,10) || b.t >= CONFIG.bomb.maxLife || outOfField){
+      explodeBomb(b.x, b.y);
+    } else {
+      b.x += dx/dist*step;
+      b.y += dy/dist*step;
+      nextBombs.push(b);
+    }
+  }
+  state.bombsInFlight = nextBombs;
+
+  // telegraphs
+  const nextTel=[];
+  for(const tl of state.telegraphs){
+    tl.t += dt;
+    if(tl.t >= CONFIG.telegraph.duration){
+      if(state.enemies.length < CONFIG.enemy.cap){
+        spawnEnemyAt(tl.spawnAngle);
+      }
+    } else nextTel.push(tl);
+  }
+  state.telegraphs = nextTel;
+
+  // sparks
+  state.sparks = state.sparks.filter(s=>{ s.t+=dt; return s.t<0.25; });
+
+  // particles
+  state.particles = state.particles.filter(p=>{
+    p.t += dt;
+    if(!p.ring){ p.x += p.vx*dt; p.y += p.vy*dt; }
+    return p.t < p.life;
+  });
+
+  state.shake = Math.max(0, state.shake - dt*30);
+
+  // enemies
+  const wc = CONFIG.enemy.wrap;
+  for(const e of state.enemies){
+    e.age += dt;
+    if(e.type==='straight'){
+      e.radius -= CONFIG.enemy.straight.speed*dt;
+    } else {
+      // constant angular speed + ramping inward speed = a true spiral all the way to the player
+      const angularSpeed = wc.angularSpeedDeg*Math.PI/180;
+      const radialProgress = Math.min(1, e.age/wc.radialRampTime);
+      const radialSpeed = wc.speed * radialProgress;
+      e.angle += angularSpeed*dt*e.dir;
+      e.radius -= radialSpeed*dt;
+    }
+  }
+
+  // collision with player -> HP damage (体力制。0まで減るとゲームオーバー)
+  const survivors = [];
+  for(const e of state.enemies){
+    if(e.radius <= CONFIG.player.radius + e.visualR){
+      const dmg = CONFIG.enemy[e.type].contactDamage;
+      state.hp = Math.max(0, state.hp - dmg);
+      state.hpRegenTimer = 0;
+      state.hitFlash = 1;
+      state.shake = Math.max(state.shake, 16);
+      const ep = polar(e.angle, e.radius);
+      spawnBurst(ep.x, ep.y, '#ff5a5a');
+      sfxPlayerHit();
+    } else {
+      survivors.push(e);
+    }
+  }
+  state.enemies = survivors;
+
+  // HP regen ― COD方式。しばらく被弾しないとじわじわ回復
+  if(state.hp < CONFIG.player.maxHp){
+    state.hpRegenTimer += dt;
+    if(state.hpRegenTimer >= CONFIG.player.regenDelay){
+      state.hp = Math.min(CONFIG.player.maxHp, state.hp + CONFIG.player.regenRate*dt);
+    }
+  }
+  state.hitFlash = Math.max(0, state.hitFlash - dt*2.5);
+
+  if(state.hp <= 0){
+    triggerGameOver();
+  }
+}
+
+/* ============================================================
+   Upgrade panel
+   ============================================================ */
+const upgradeGridEl = document.getElementById('upgradeGrid');
+const upgradeScreenEl = document.getElementById('upgradeScreen');
+
+function openUpgrade(){
+  state.status = 'upgrade';
+  state.leftDown = false; state.rightDown = false; state.reticle=null;
+  sfxChargeFull();
+  upgradeGridEl.innerHTML = '';
+  for(const def of CONFIG.upgrades){
+    const count = state.upgradeCounts[def.key];
+    const maxed = count >= def.max;
+    const cost = Math.round(def.baseCost * Math.pow(def.growth, count));
+    const card = document.createElement('div');
+    card.className = 'upCard' + ((maxed || state.score<cost) ? ' disabled' : '');
+    card.innerHTML = `<div class="name">${def.name}</div>
+      <div class="desc">${maxed ? '上限に到達' : def.desc(count)}</div>
+      <div class="cost">${maxed ? '' : 'Cost: '+cost}</div>`;
+    if(!maxed && state.score>=cost){
+      bindTap(card, ()=>buyUpgrade(def.key));
+    }
+    upgradeGridEl.appendChild(card);
+  }
+  upgradeScreenEl.classList.remove('hidden');
+}
+
+function buyUpgrade(key){
+  const def = CONFIG.upgrades.find(d=>d.key===key);
+  const count = state.upgradeCounts[key];
+  if(count >= def.max) return;
+  const cost = Math.round(def.baseCost * Math.pow(def.growth, count));
+  if(state.score < cost) return;
+  state.score -= cost;
+  state.upgradeCounts[key]++;
+  switch(key){
+    case 'bulletSpeed': state.bulletSpeedMul *= 1.2; break;
+    case 'bulletRadius': state.bulletRadiusMul *= 1.5; break;
+    case 'bombMax': state.bombMax++; break;
+    case 'bombRecast': state.bombRecastMul *= CONFIG.bomb.recastStep; break;
+  }
+  sfxUpgradeBuy();
+  closeUpgrade();
+}
+
+function closeUpgrade(){
+  state.charge = 0;
+  upgradeScreenEl.classList.add('hidden');
+  if(state.status==='upgrade') state.status='playing';
+}
+
+bindTap(document.getElementById('skipBtn'), ()=>{ sfxClick(); closeUpgrade(); });
+
+/* ============================================================
+   Scoreboard ― Supabase (Postgres + REST) 上の共有オンラインランキング
+   ・ログイン不要。ゲームオーバーのたびに名前を入力して送信するだけ。
+   ・SDKは使わず fetch() で REST(PostgREST) を直接叩く
+     （「外部JSライブラリなし」の方針を維持するため）。
+   ・セットアップ手順は SUPABASE_SETUP.md を参照。
+   ============================================================ */
+// ▼▼▼ ここを自分の Supabase プロジェクトの値に書き換えてください ▼▼▼
+const SUPABASE_URL = 'https://YOUR-PROJECT-REF.supabase.co';
+const SUPABASE_ANON_KEY = 'YOUR-ANON-PUBLIC-KEY';
+// ▲▲▲ ここまで ▲▲▲
+const SCOREBOARD_SIZE = 30; // Top N（表示件数。テーブル自体は全記録を保持し、常に上位N件だけを取得する）
+
+function isSupabaseConfigured(){
+  return !!SUPABASE_URL && !SUPABASE_URL.includes('YOUR-PROJECT') &&
+         !!SUPABASE_ANON_KEY && !SUPABASE_ANON_KEY.includes('YOUR-ANON');
+}
+
+// 上位 limit 件を取得（score 降順）。失敗時は例外を投げる。
+async function fetchTopScores(limit){
+  const url = `${SUPABASE_URL}/rest/v1/scores?select=name,score&order=score.desc&limit=${limit}`;
+  const res = await fetch(url, {
+    headers: {
+      'apikey': SUPABASE_ANON_KEY,
+      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+    },
+  });
+  if(!res.ok) throw new Error('fetchTopScores failed: HTTP ' + res.status);
+  return await res.json();
+}
+
+// 1件登録。失敗時は例外を投げる（呼び出し側でリトライ導線を出す）。
+async function submitScoreOnline(name, score){
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/scores`, {
+    method: 'POST',
+    headers: {
+      'apikey': SUPABASE_ANON_KEY,
+      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=minimal',
+    },
+    body: JSON.stringify({ name, score }),
+  });
+  if(!res.ok) throw new Error('submitScoreOnline failed: HTTP ' + res.status);
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function renderScoreList(el, list, highlightIndex){
+  el.innerHTML = '';
+  if(!list || list.length===0){
+    el.innerHTML = '<div class="scoreEmpty">NO RECORDS YET</div>';
+    return;
+  }
+  list.forEach((s,i)=>{
+    const row = document.createElement('div');
+    row.className = 'scoreRow' + (i===highlightIndex ? ' highlight' : '');
+    row.innerHTML = `<span class="rank">${i+1}</span><span class="name">${escapeHtml(s.name)}</span><span class="val">${s.score.toLocaleString()}</span>`;
+    el.appendChild(row);
+  });
+}
+function renderScoreMessage(el, msg){
+  el.innerHTML = `<div class="scoreEmpty">${escapeHtml(msg)}</div>`;
+}
+
+/* ============================================================
+   Game over / start / scoreboard screens
+   ============================================================ */
+const titleScreenEl = document.getElementById('titleScreen');
+const gameoverScreenEl = document.getElementById('gameoverScreen');
+const scoreboardScreenEl = document.getElementById('scoreboardScreen');
+const finalScoreEl = document.getElementById('finalScore');
+const rankNoteEl = document.getElementById('rankNote');
+const registerRowEl = document.getElementById('registerRow');
+const nameInputEl = document.getElementById('nameInput');
+const registerBtnEl = document.getElementById('registerBtn');
+const scoreListEl = document.getElementById('scoreList');
+const scoreListTitleEl = document.getElementById('scoreListTitle');
+const retryBtnEl = document.getElementById('retryBtn');
+const homeBtnGameoverEl = document.getElementById('homeBtnGameover');
+
+// リトライ／ホームへ戻るボタンをまとめてロック・解除する
+// （Top30ランクイン時は「登録完了までどちらの手段でも先に進ませない」を徹底するため）
+function setRetryLock(locked){
+  retryBtnEl.disabled = locked;
+  homeBtnGameoverEl.disabled = locked;
+}
+
+// ゲームオーバー時：Top30に入るスコアなら「必ず」名前登録するまで先に進ませない。
+// （registerRow を閉じる/スキップする手段は用意しない。通信不通で順位判定ができない
+//   場合だけ、例外的にリトライ・ホームを解放する。）
+async function triggerGameOver(){
+  state.status = 'gameover';
+  state.pendingRegistration = false;
+  stopBgm();
+  sfxGameOver();
+  finalScoreEl.textContent = state.score.toLocaleString();
+  registerRowEl.classList.add('hidden');
+  scoreListEl.classList.add('hidden');
+  setRetryLock(true);
+  gameoverScreenEl.classList.remove('hidden');
+
+  if(!isSupabaseConfigured()){
+    rankNoteEl.textContent = '⚠ ランキング未設定です（index.html内のSUPABASE_URL/ANON_KEYを設定してください）';
+    setRetryLock(false);
+    return;
+  }
+
+  rankNoteEl.textContent = '集計中…';
+  let top, fetchFailed = false;
+  try{
+    top = await fetchTopScores(SCOREBOARD_SIZE);
+  } catch(err){
+    fetchFailed = true;
+  }
+
+  if(fetchFailed){
+    rankNoteEl.textContent = '⚠ ランキング取得に失敗しました(通信環境をご確認ください)。念のため登録もできます';
+    nameInputEl.value = '';
+    registerRowEl.classList.remove('hidden'); // 順位不明でも登録の機会は残す
+    setRetryLock(false);
+    return;
+  }
+
+  const qualifies = state.score > 0 && (top.length < SCOREBOARD_SIZE || state.score > top[top.length-1].score);
+  if(qualifies){
+    rankNoteEl.textContent = `TOP ${SCOREBOARD_SIZE} RANK IN! 名前を登録してください`;
+    registerRowEl.classList.remove('hidden');
+    nameInputEl.value = '';
+    state.pendingRegistration = true; // 登録完了までリトライ・ホームともに不可
+    setTimeout(()=>nameInputEl.focus(), 0);
+  } else {
+    rankNoteEl.textContent = '';
+    renderScoreList(scoreListEl, top, -1);
+    scoreListEl.classList.remove('hidden');
+    setRetryLock(false);
+  }
+}
+
+async function registerScore(){
+  if(registerBtnEl.disabled) return;
+  const name = (nameInputEl.value||'').trim().slice(0,10).toUpperCase() || 'NONAME';
+  registerBtnEl.disabled = true;
+  rankNoteEl.textContent = '登録中…';
+  try{
+    await submitScoreOnline(name, state.score);
+    let top = [];
+    try{ top = await fetchTopScores(SCOREBOARD_SIZE); } catch(e){ /* 表示だけ諦める。登録自体は成功済み */ }
+    const idx = top.findIndex(s => s.name===name && s.score===state.score);
+    renderScoreList(scoreListEl, top, idx);
+    scoreListEl.classList.remove('hidden');
+    registerRowEl.classList.add('hidden');
+    rankNoteEl.textContent = 'REGISTERED!';
+    sfxRegister();
+    state.pendingRegistration = false; // ここで初めてリトライ・ホームを解放
+    setRetryLock(false);
+  } catch(err){
+    rankNoteEl.textContent = '⚠ 登録に失敗しました。もう一度REGISTERを押してください';
+    // pendingRegistration は解除しない ― 登録が成功するまでリトライさせない
+  } finally {
+    registerBtnEl.disabled = false;
+  }
+}
+
+async function openScoreboard(){
+  titleScreenEl.classList.add('hidden');
+  scoreboardScreenEl.classList.remove('hidden');
+  renderScoreMessage(scoreListTitleEl, '読み込み中…');
+  if(!isSupabaseConfigured()){
+    renderScoreMessage(scoreListTitleEl, '⚠ ランキング未設定です');
+    return;
+  }
+  try{
+    const top = await fetchTopScores(SCOREBOARD_SIZE);
+    renderScoreList(scoreListTitleEl, top, -1);
+  } catch(err){
+    renderScoreMessage(scoreListTitleEl, '⚠ 取得に失敗しました（オフライン？）');
+  }
+}
+function closeScoreboard(){
+  scoreboardScreenEl.classList.add('hidden');
+  if(state.status==='title') titleScreenEl.classList.remove('hidden');
+}
+
+function startGame(){
+  const mouse = state.mouse;
+  state = freshState();
+  state.mouse = mouse;
+  state.status = 'playing';
+  titleScreenEl.classList.add('hidden');
+  gameoverScreenEl.classList.add('hidden');
+  upgradeScreenEl.classList.add('hidden');
+  scoreboardScreenEl.classList.add('hidden');
+  ensureAudio();
+  startBgm();
+}
+
+// プレイ中断／ゲームオーバーからタイトルへ戻る
+function goHome(){
+  stopBgm();
+  state.status = 'title';
+  state.leftDown = false; state.rightDown = false; state.reticle = null;
+  upgradeScreenEl.classList.add('hidden');
+  gameoverScreenEl.classList.add('hidden');
+  scoreboardScreenEl.classList.add('hidden');
+  titleScreenEl.classList.remove('hidden');
+}
+
+bindTap(document.getElementById('startBtn'), ()=>{ sfxClick(); startGame(); });
+bindTap(document.getElementById('retryBtn'), ()=>{
+  if(state.pendingRegistration || retryBtnEl.disabled) return; // Top30ランクインは登録完了までリトライ不可
+  sfxClick(); startGame();
+});
+bindTap(document.getElementById('homeBtnGameover'), ()=>{
+  if(state.pendingRegistration || homeBtnGameoverEl.disabled) return; // Top30ランクインは登録完了まで不可
+  sfxClick(); goHome();
+});
+
+// プレイ中の「ホームに戻る」アイコン ― 誤タップでランを失わないよう2段階確認にする
+const homeBtnEl = document.getElementById('homeBtn');
+let homeConfirmTimer = null;
+function resetHomeBtnConfirm(){
+  if(homeConfirmTimer){ clearTimeout(homeConfirmTimer); homeConfirmTimer = null; }
+  homeBtnEl.classList.remove('confirming');
+  homeBtnEl.textContent = '🏠';
+  homeBtnEl.title = 'ホームに戻る';
+}
+bindTap(homeBtnEl, ()=>{
+  if(state.status!=='playing' && state.status!=='upgrade') return;
+  if(homeBtnEl.classList.contains('confirming')){
+    resetHomeBtnConfirm();
+    sfxClick();
+    goHome();
+  } else {
+    homeBtnEl.classList.add('confirming');
+    homeBtnEl.textContent = '⚠';
+    homeBtnEl.title = 'もう一度タップでホームに戻ります（スコアは保存されません）';
+    sfxClick();
+    homeConfirmTimer = setTimeout(resetHomeBtnConfirm, 3000);
+  }
+});
+bindTap(document.getElementById('registerBtn'), registerScore);
+nameInputEl.addEventListener('keydown', e=>{
+  if(e.key==='Enter'){ e.preventDefault(); registerScore(); }
+});
+bindTap(document.getElementById('scoreboardBtn'), ()=>{ sfxClick(); openScoreboard(); });
+bindTap(document.getElementById('closeScoreboardBtn'), ()=>{ sfxClick(); closeScoreboard(); });
+bindTap(document.getElementById('muteBtn'), toggleMute);
+window.addEventListener('keydown', e=>{
+  if((e.key==='m'||e.key==='M') && document.activeElement!==nameInputEl) toggleMute();
+});
+setMuted(muted); // sync the mute icon with the saved preference (no audio context created yet)
+
+/* ============================================================
+   Input
+   ============================================================ */
+canvas.addEventListener('contextmenu', e=>e.preventDefault());
+
+canvas.addEventListener('mousemove', e=>{
+  state.mouse.x = e.clientX; state.mouse.y = e.clientY;
+  if(state.rightDown){
+    state.reticle = clampToField(e.clientX, e.clientY);
+  }
+});
+
+canvas.addEventListener('mousedown', e=>{
+  if(state.status!=='playing') return;
+  if(e.button===0){ state.leftDown = true; }
+  else if(e.button===2){ state.rightDown = true; state.reticle = clampToField(e.clientX,e.clientY); }
+});
+
+window.addEventListener('mouseup', e=>{
+  if(e.button===0){ state.leftDown = false; }
+  else if(e.button===2){
+    if(state.rightDown && state.reticle && state.status==='playing'){
+      tryFireBomb(state.reticle);
+    }
+    state.rightDown = false; state.reticle = null;
+  }
+});
+
+/* ============================================================
+   Touch input (iPhone等) ― マウスの左クリック相当を画面タップ、
+   右クリック相当を専用のBOMBボタン長押し＋ドラッグで再現する。
+   両方を同時に(両手の指で)操作できるよう、タッチIDで個別に追跡する。
+   ============================================================ */
+const bombBtnEl = document.getElementById('bombBtn');
+if('ontouchstart' in window || navigator.maxTouchPoints > 0){
+  document.body.classList.add('touch-device');
+}
+let fireTouchId = null;
+let bombTouchId = null;
+
+canvas.addEventListener('touchstart', e=>{
+  if(state.status!=='playing') return;
+  for(const t of e.changedTouches){
+    if(fireTouchId===null){
+      fireTouchId = t.identifier;
+      state.mouse.x = t.clientX; state.mouse.y = t.clientY;
+      state.leftDown = true;
+    }
+  }
+  e.preventDefault();
+}, {passive:false});
+
+bombBtnEl.addEventListener('touchstart', e=>{
+  if(state.status!=='playing') return;
+  for(const t of e.changedTouches){
+    if(bombTouchId===null){
+      bombTouchId = t.identifier;
+      state.rightDown = true;
+      state.reticle = clampToField(t.clientX, t.clientY);
+      bombBtnEl.classList.add('armed');
+    }
+  }
+  e.preventDefault();
+}, {passive:false});
+
+window.addEventListener('touchmove', e=>{
+  for(const t of e.changedTouches){
+    if(t.identifier===fireTouchId){ state.mouse.x = t.clientX; state.mouse.y = t.clientY; }
+    else if(t.identifier===bombTouchId){ state.reticle = clampToField(t.clientX, t.clientY); }
+  }
+  if(fireTouchId!==null || bombTouchId!==null) e.preventDefault();
+}, {passive:false});
+
+function handleTouchEnd(e){
+  for(const t of e.changedTouches){
+    if(t.identifier===fireTouchId){
+      fireTouchId = null;
+      state.leftDown = false;
+    } else if(t.identifier===bombTouchId){
+      if(state.reticle && state.status==='playing') tryFireBomb(state.reticle);
+      bombTouchId = null;
+      state.rightDown = false; state.reticle = null;
+      bombBtnEl.classList.remove('armed');
+    }
+  }
+}
+window.addEventListener('touchend', handleTouchEnd);
+window.addEventListener('touchcancel', handleTouchEnd);
+
+window.addEventListener('keydown', e=>{
+  if(document.activeElement === nameInputEl) return; // let the name field handle its own keys
+  if(e.key==='Escape' && state.status==='upgrade') closeUpgrade();
+  if(e.key==='Escape' && !scoreboardScreenEl.classList.contains('hidden')) closeScoreboard();
+  if((e.key==='r'||e.key==='R') && state.status==='gameover' && !state.pendingRegistration && !retryBtnEl.disabled) startGame();
+  if((e.key==='Enter') && state.status==='title') startGame();
+});
+
+/* ============================================================
+   Draw ― Neon / glitch / electronic-virus visual language
+   ============================================================ */
+const PALETTE = {
+  cyan:'#2bfff0',
+  magenta:'#ff2bd6',
+  purple:'#9d3bff',
+  gold:'#e8ff5a',
+  dim:'#8a7fb8',
+};
+let clock = 0; // accumulated time, drives idle animation (pulses / rotating rings)
+
+// Faceless spiky "computer virus". `seed` is a stable per-enemy value so each one
+// pulses slightly out of sync. Drawn as a coarse grid of solid squares (no gradients /
+// no blur) so the silhouette reads as blocky dot-art at any zoom.
+// Body silhouette (reference: ウィルスデザイン2.png) ― a round cell with many thin
+// stalks radiating outward, each capped with a round tip, like a classic virus icon.
+const VIRUS_GRID = 20; // sprite resolution ― higher = finer dots, lower = chunkier
+const VIRUS_SPIKE_N = 10;
+const VIRUS_SPIKE_ANGLES = Array.from({length:VIRUS_SPIKE_N}, (_,i)=>(Math.PI*2*i)/VIRUS_SPIKE_N);
+const VIRUS_BODY_R = 0.48; // body circle radius, normalized ―1..1
+const VIRUS_SPIKE_START = 0.46, VIRUS_SPIKE_END = 0.78, VIRUS_SPIKE_HALFW = 0.075;
+const VIRUS_TIP_R = 0.86, VIRUS_TIP_RADIUS = 0.15;
+
+function drawVirus(x, y, baseR, coreColor, highlightColor, spikeColor, seed){
+  const pulse = 1 + Math.sin(clock*2.6 + seed) * 0.05;
+  const r = baseR * pulse;
+  // ぶるぶる: pronounced full-body trembling ― bigger per-frame random shake
+  const jx = (Math.random()-0.5) * r * 0.26;
+  const jy = (Math.random()-0.5) * r * 0.26;
+
+  const N = VIRUS_GRID;
+  const half = r * 1.7; // spike tips reach out to about this radius
+  const cellSize = (half*2)/N;
+  const cell = cellSize + 0.6; // slight overlap so blocks tile with no seams
+
+  ctx.save();
+  ctx.translate(x+jx, y+jy);
+
+  for(let row=0; row<N; row++){
+    const cy = ((row+0.5)/N)*2-1;
+    for(let col=0; col<N; col++){
+      const cx = ((col+0.5)/N)*2-1;
+      const dist = Math.hypot(cx,cy);
+
+      const isBody = dist <= VIRUS_BODY_R;
+      let isSpike = false, isTip = false;
+      if(!isBody){
+        for(const th of VIRUS_SPIKE_ANGLES){
+          const rad  =  cx*Math.cos(th) + cy*Math.sin(th); // distance along the spike
+          const perp = -cx*Math.sin(th) + cy*Math.cos(th); // distance across the spike
+          if(rad>VIRUS_SPIKE_START && rad<VIRUS_SPIKE_END && Math.abs(perp)<VIRUS_SPIKE_HALFW){ isSpike = true; break; }
+          const tx = Math.cos(th)*VIRUS_TIP_R, ty = Math.sin(th)*VIRUS_TIP_R;
+          if(Math.hypot(cx-tx, cy-ty) < VIRUS_TIP_RADIUS){ isTip = true; break; }
+        }
+      }
+      if(!isBody && !isSpike && !isTip) continue;
+
+      let color;
+      if(isTip) color = highlightColor;
+      else if(isSpike) color = spikeColor;
+      else if(dist < 0.22) color = highlightColor;
+      else color = coreColor;
+
+      ctx.fillStyle = color;
+      ctx.fillRect(-half + col*cellSize, -half + row*cellSize, cell, cell);
+    }
+  }
+
+  ctx.restore();
+}
+
+function draw(){
+  clock += 1/60;
+  // プレイ中／強化選択中だけ、ホームアイコンとBOMB用タッチボタンを表示する
+  const showInGameControls = (state.status==='playing' || state.status==='upgrade');
+  homeBtnEl.classList.toggle('hidden', !showInGameControls);
+  bombBtnEl.classList.toggle('hidden', !showInGameControls);
+  ctx.save();
+  ctx.clearRect(0,0,W,H);
+
+  let ox=0, oy=0;
+  if(state.shake>0){
+    ox = (Math.random()-0.5)*state.shake;
+    oy = (Math.random()-0.5)*state.shake;
+    ctx.translate(ox,oy);
+  }
+
+  // field ― firewall perimeter (kept minimal: one boundary, one faint scan ring)
+  ctx.beginPath();
+  ctx.arc(CX,CY,FIELD_R,0,Math.PI*2);
+  ctx.fillStyle = 'rgba(10,6,32,0.5)';
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = 'rgba(43,255,240,0.45)';
+  ctx.shadowColor='rgba(43,255,240,0.5)'; ctx.shadowBlur=6;
+  ctx.stroke();
+  ctx.shadowBlur=0;
+  // slow rotating scan ring (dashed, faint) ― reads as an active firewall boundary
+  ctx.save();
+  ctx.setLineDash([2, 22]);
+  ctx.lineDashOffset = -clock*16;
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = 'rgba(255,43,214,0.3)';
+  ctx.beginPath(); ctx.arc(CX,CY,FIELD_R+6,0,Math.PI*2); ctx.stroke();
+  ctx.restore();
+
+  // sparks (cap reached, wall hit with no spawn)
+  for(const s of state.sparks){
+    const p = polar(s.angle, FIELD_R);
+    const a = 1 - s.t/0.25;
+    ctx.beginPath();
+    ctx.arc(p.x,p.y, 6+ s.t*20, 0, Math.PI*2);
+    ctx.strokeStyle = `rgba(232,255,90,${a})`;
+    ctx.lineWidth=2;
+    ctx.stroke();
+  }
+
+  // telegraphs: traveling light along circumference
+  for(const tl of state.telegraphs){
+    const prog = Math.min(1, tl.t/CONFIG.telegraph.duration);
+    let d = norm(tl.spawnAngle - tl.startAngle);
+    const curAngle = tl.startAngle + d*prog;
+    // arc trail
+    ctx.beginPath();
+    ctx.arc(CX,CY,FIELD_R, Math.min(tl.startAngle,curAngle), Math.max(tl.startAngle,curAngle));
+    ctx.strokeStyle = 'rgba(232,255,90,0.5)';
+    ctx.lineWidth = 4;
+    ctx.stroke();
+    const hp = polar(curAngle, FIELD_R);
+    ctx.beginPath();
+    ctx.arc(hp.x,hp.y,7,0,Math.PI*2);
+    ctx.fillStyle = '#e8ff5a';
+    ctx.shadowColor='#e8ff5a'; ctx.shadowBlur=14;
+    ctx.fill();
+    ctx.shadowBlur=0;
+    // target marker (dim, growing) ― corruption about to spawn
+    const sp = polar(tl.spawnAngle, FIELD_R);
+    ctx.beginPath();
+    ctx.arc(sp.x,sp.y, 10+prog*6, 0, Math.PI*2);
+    ctx.strokeStyle = `rgba(255,43,214,${0.3+prog*0.5})`;
+    ctx.lineWidth=2;
+    ctx.stroke();
+  }
+
+  // enemies ― electronic viruses (faceless, trembling bodies)
+  for(const e of state.enemies){
+    const p = polar(e.angle, e.radius);
+    const seed = e.angle * 3.7; // stable per-enemy pulse timing offset
+    if(e.type==='straight'){
+      drawVirus(p.x,p.y, e.visualR, '#ff2bd6', '#ffc2f0', '#7a0e52', seed);
+    } else {
+      // faint, slow orbiting ring marks the wrap-type apart from straight-type
+      ctx.save();
+      ctx.translate(p.x,p.y);
+      ctx.rotate(clock*0.6);
+      ctx.setLineDash([3,6]);
+      ctx.strokeStyle = 'rgba(157,59,255,0.35)';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.arc(0,0, e.visualR*1.8, 0, Math.PI*2); ctx.stroke();
+      ctx.restore();
+      drawVirus(p.x,p.y, e.visualR, '#9d3bff', '#dcc2ff', '#3d1266', seed+10);
+    }
+  }
+
+  // bullets ― cyan data-shots with short trail
+  // 「弾サイズアップ」強化の見た目にも反映する（以前は当たり判定だけ大きくなり
+  //   見た目が変わらず恩恵を感じにくかったため、描画サイズも bulletRadiusMul に連動させる）
+  const bulletDrawR = CONFIG.bullet.radius * state.bulletRadiusMul;
+  for(const bl of state.bullets){
+    const p = polar(bl.angle, bl.radius);
+    const tail = polar(bl.angle, Math.max(0,bl.radius-14));
+    ctx.strokeStyle = 'rgba(43,255,240,0.65)';
+    ctx.lineWidth = bulletDrawR*1.4;
+    ctx.beginPath(); ctx.moveTo(tail.x,tail.y); ctx.lineTo(p.x,p.y); ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(p.x,p.y,bulletDrawR,0,Math.PI*2);
+    ctx.fillStyle = '#eafcff';
+    ctx.shadowColor='#2bfff0'; ctx.shadowBlur=4+bulletDrawR;
+    ctx.fill();
+    ctx.shadowBlur=0;
+  }
+
+  // bombs in flight ― small trail + homing line toward its current target
+  for(const b of state.bombsInFlight){
+    ctx.strokeStyle = 'rgba(232,255,90,0.25)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([3,5]);
+    ctx.beginPath(); ctx.moveTo(b.x,b.y); ctx.lineTo(b.tx,b.ty); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.arc(b.x,b.y, 6+Math.sin(b.t*14)*2, 0, Math.PI*2);
+    ctx.fillStyle = '#e8ff5a';
+    ctx.shadowColor='#e8ff5a'; ctx.shadowBlur=6;
+    ctx.fill();
+    ctx.shadowBlur=0;
+  }
+
+  // particles
+  for(const p of state.particles){
+    const a = 1 - p.t/p.life;
+    if(p.ring){
+      const r = p.maxR * (p.t/p.life);
+      ctx.beginPath();
+      ctx.arc(p.x,p.y,r,0,Math.PI*2);
+      ctx.strokeStyle = `rgba(232,255,90,${a})`;
+      ctx.lineWidth = 4;
+      ctx.stroke();
+    } else {
+      ctx.beginPath();
+      ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+      ctx.fillStyle = p.color;
+      ctx.globalAlpha = a;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // player ― placeholder "system core" (final look TBD)
+  drawPlayerCore();
+
+  // aim line
+  if(state.status==='playing'){
+    const aim = Math.atan2(state.mouse.y-CY, state.mouse.x-CX);
+    const ap = polar(aim, FIELD_R);
+    ctx.beginPath();
+    ctx.moveTo(CX,CY); ctx.lineTo(ap.x,ap.y);
+    ctx.strokeStyle='rgba(43,255,240,0.15)';
+    ctx.lineWidth=1;
+    ctx.stroke();
+  }
+
+  // reticle + dashed line
+  if(state.rightDown && state.reticle){
+    ctx.setLineDash([6,6]);
+    ctx.beginPath();
+    ctx.moveTo(CX,CY); ctx.lineTo(state.reticle.x, state.reticle.y);
+    ctx.strokeStyle = 'rgba(232,255,90,0.7)';
+    ctx.lineWidth=2;
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.arc(state.reticle.x, state.reticle.y, 14, 0, Math.PI*2);
+    ctx.strokeStyle='#e8ff5a'; ctx.lineWidth=2; ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(state.reticle.x-20,state.reticle.y); ctx.lineTo(state.reticle.x+20,state.reticle.y);
+    ctx.moveTo(state.reticle.x,state.reticle.y-20); ctx.lineTo(state.reticle.x,state.reticle.y+20);
+    ctx.stroke();
+    // preview blast radius
+    ctx.beginPath();
+    ctx.arc(state.reticle.x,state.reticle.y, CONFIG.bomb.blastRadius*state.blastRadiusMul, 0, Math.PI*2);
+    ctx.strokeStyle='rgba(232,255,90,0.25)';
+    ctx.stroke();
+  }
+
+  ctx.restore();
+
+  // hit flash ― 被弾時に画面全体をうっすら赤く点滅させるCall of Duty的フィードバック
+  if(state.hitFlash > 0){
+    ctx.save();
+    ctx.fillStyle = `rgba(255,20,20,${state.hitFlash*0.35})`;
+    ctx.fillRect(0,0,W,H);
+    ctx.restore();
+  }
+
+  drawHUD();
+}
+
+// Placeholder player visual ― a glowing "core" with orbiting rings.
+// Kept in its own function so the final 自機 design can drop in here later.
+function drawPlayerCore(){
+  const r = CONFIG.player.radius;
+  ctx.save();
+  ctx.translate(CX,CY);
+  // outer defense rings
+  for(let i=0;i<2;i++){
+    ctx.save();
+    ctx.rotate(clock*(i===0?1.2:-0.9));
+    ctx.setLineDash([4, 10]);
+    ctx.strokeStyle = i===0 ? 'rgba(43,255,240,0.5)' : 'rgba(255,43,214,0.4)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(0,0, r+8+i*8, 0, Math.PI*2); ctx.stroke();
+    ctx.restore();
+  }
+  // core body
+  const grad = ctx.createRadialGradient(0,0,0,0,0,r);
+  grad.addColorStop(0,'#ffffff');
+  grad.addColorStop(0.5,'#c9fffb');
+  grad.addColorStop(1,'#2bfff0');
+  ctx.beginPath();
+  ctx.arc(0,0,r,0,Math.PI*2);
+  ctx.fillStyle = grad;
+  ctx.shadowColor='#2bfff0'; ctx.shadowBlur=12;
+  ctx.fill();
+  ctx.shadowBlur=0;
+  ctx.lineWidth=1.5;
+  ctx.strokeStyle='rgba(255,255,255,0.8)';
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawHUD(){
+  if(state.status==='title') return;
+
+  // score
+  ctx.font = '22px "Press Start 2P"';
+  ctx.fillStyle = '#e8ff5a';
+  ctx.textAlign = 'left';
+  ctx.fillText(state.score.toLocaleString(), 24, 42);
+  ctx.font = '12px "DotGothic16"';
+  ctx.fillStyle = '#8a7fb8';
+  ctx.fillText('SCORE', 24, 60);
+
+  // HP bar (top-left, under score) ― regen中は淡くパルスさせて回復中だと分かるように
+  const hpBarW = 170, hpBarH = 11;
+  const hpx = 24, hpy = 80;
+  const hpPct = state.hp / CONFIG.player.maxHp;
+  const regenerating = state.hp < CONFIG.player.maxHp && state.hpRegenTimer >= CONFIG.player.regenDelay;
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#8a7fb8';
+  ctx.font = '11px "DotGothic16"';
+  ctx.fillText('HP', hpx, hpy-4);
+  ctx.strokeStyle = 'rgba(255,90,90,0.4)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(hpx, hpy, hpBarW, hpBarH);
+  const hpAlpha = regenerating ? (0.7 + Math.sin(clock*8)*0.3) : 1;
+  ctx.fillStyle = hpPct > 0.3 ? `rgba(90,255,160,${hpAlpha})` : `rgba(255,90,90,${hpAlpha})`;
+  ctx.fillRect(hpx, hpy, hpBarW*hpPct, hpBarH);
+
+  // enemy count
+  ctx.textAlign = 'right';
+  ctx.font = '18px "Press Start 2P"';
+  ctx.fillStyle = state.enemies.length>=CONFIG.enemy.cap ? '#ff2bd6' : '#eafcff';
+  ctx.fillText(`${state.enemies.length}/${CONFIG.enemy.cap}`, W-24, 42);
+  ctx.font = '12px "DotGothic16"';
+  ctx.fillStyle = '#8a7fb8';
+  ctx.fillText('VIRUS', W-24, 60);
+
+  // charge bar (top center) ― 減少中は色と表示で分かるようにする
+  const barW = Math.min(360, W*0.4), barH=14;
+  const bx = CX-barW/2, by=22;
+  const draining = state.chargeIdleTimer >= CONFIG.charge.decayDelay && state.charge > 0;
+  ctx.textAlign='center';
+  ctx.fillStyle= draining ? '#ff7a7a' : '#8a7fb8';
+  ctx.font='11px "DotGothic16"';
+  ctx.fillText(draining ? 'CHARGE ▼ 低下中' : 'CHARGE', CX, by-6);
+  ctx.strokeStyle='rgba(43,255,240,0.4)';
+  ctx.lineWidth=1;
+  ctx.strokeRect(bx,by,barW,barH);
+  const pct = state.charge/CONFIG.charge.max;
+  if(pct>=1) ctx.fillStyle = '#e8ff5a';
+  else if(draining) ctx.fillStyle = `rgba(255,110,110,${0.75+Math.sin(clock*9)*0.25})`;
+  else ctx.fillStyle = '#2bfff0';
+  ctx.fillRect(bx,by,barW*pct,barH);
+
+  // kill streak (charge bar のすぐ下) ― 連鎖中だけ表示し、残り時間をバーで示す
+  if(state.streak > 0){
+    const sMul = streakMultiplier(state.streak);
+    const remain = Math.max(0, 1 - state.streakTimer/CONFIG.score.streakWindow);
+    const pop = state.streakPop;
+    ctx.textAlign = 'center';
+    ctx.font = `${Math.round(15 + pop*7)}px "Press Start 2P"`;
+    ctx.fillStyle = sMul > 1 ? '#e8ff5a' : '#eafcff';
+    if(pop>0){ ctx.shadowColor = '#e8ff5a'; ctx.shadowBlur = 12*pop; }
+    ctx.fillText(`x${sMul.toFixed(2)}`, CX, by+barH+30);
+    ctx.shadowBlur = 0;
+    ctx.font = '11px "DotGothic16"';
+    ctx.fillStyle = '#8a7fb8';
+    ctx.fillText(`${state.streak} KILL STREAK`, CX, by+barH+48);
+    // 連鎖が切れるまでの残り時間
+    const sw = 90;
+    ctx.fillStyle = 'rgba(232,255,90,0.55)';
+    ctx.fillRect(CX-sw/2, by+barH+54, sw*remain, 3);
+  }
+
+  // bombs (bottom center)
+  const total = state.bombMax;
+  const spacing = 26;
+  const startX = CX - (total-1)*spacing/2;
+  const by2 = H-46;
+  const regenPct = state.bombs < total
+    ? Math.min(1, state.bombRegenTimer / (CONFIG.bomb.regenInterval * state.bombRecastMul))
+    : 0;
+  for(let i=0;i<total;i++){
+    const px = startX+i*spacing;
+    ctx.beginPath();
+    ctx.arc(px, by2, 9, 0, Math.PI*2);
+    ctx.fillStyle = i < state.bombs ? '#e8ff5a' : 'rgba(232,255,90,0.12)';
+    ctx.fill();
+    // 次に回復する1個はリキャストの進捗を下から満たして表示
+    if(i === state.bombs && regenPct > 0){
+      ctx.save();
+      ctx.clip();
+      ctx.fillStyle = 'rgba(232,255,90,0.5)';
+      ctx.fillRect(px-9, by2+9 - 18*regenPct, 18, 18*regenPct);
+      ctx.restore();
+    }
+    ctx.lineWidth=1.5;
+    ctx.strokeStyle='rgba(255,255,255,0.25)';
+    ctx.stroke();
+  }
+  ctx.fillStyle='#8a7fb8';
+  ctx.font='11px "DotGothic16"';
+  ctx.fillText(document.body.classList.contains('touch-device') ? 'BOMB（💣ボタン長押し）' : 'BOMB（右クリック長押し）', CX, H-20);
+}
+
+/* ============================================================
+   Main loop
+   ============================================================ */
+let lastT = performance.now();
+function loop(t){
+  const dt = Math.min(0.05, (t-lastT)/1000);
+  lastT = t;
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
